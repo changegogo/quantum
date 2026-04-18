@@ -282,6 +282,15 @@ async function fetchAddressPublicKeys(address, addressType) {
   return [...keys].slice(0, 5);
 }
 
+app.get("/", (_req, res) => {
+  res.json({
+    ok: true,
+    service: "bitcoin-address-analysis-api",
+    health: "/api/health",
+    example: "/api/address/<bitcoin-address>",
+  });
+});
+
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
 });

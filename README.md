@@ -91,3 +91,7 @@ npm run dev
 - 本工具用于风险教育与运维辅助，不构成投资建议。
 - 风险评分与建议是规则化结果，不等于绝对安全结论。
 - 对复杂脚本、多签、托管场景，建议结合实际钱包/交易流程复核。
+
+
+部署express项目
+https://github.com/maqi1520/nextjs-tailwind-blog/blob/main/data/blog/%E5%B0%86%20Node%20%E5%BA%94%E7%94%A8%20Express.js%20%E9%83%A8%E7%BD%B2%E5%88%B0%20Vercel.md

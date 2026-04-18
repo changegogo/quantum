@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, ref } from "vue";
 
-const apiBase = import.meta.env.VITE_API_BASE || "http://localhost:3000";
+const apiBase = import.meta.env.VITE_API_BASE || "https://coingoto.vercel.app";
 
 const address = ref("");
 const loading = ref(false);

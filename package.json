@@ -1,7 +1,9 @@
 {
   "name": "quantum",
+  "private": true,
   "version": "1.0.0",
-  "main": "index.js",
+  "type": "module",
+  "workspaces": ["backend"],
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },

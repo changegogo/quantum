@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "build": "vite build && node scripts/gh-pages-spa-fallback.mjs",
+    "preview": "vite preview --base /quantum/"
   },
   "dependencies": {
     "vue": "^3.5.32",

@@ -1,7 +1,87 @@
 <script setup>
-import { computed, nextTick, ref } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 
 const apiBase = import.meta.env.VITE_API_BASE || "https://coingoto.vercel.app";
+
+const CHECKLIST_STORAGE_KEY = "btc-migration-checklist-v1";
+
+const migrationSteps = [
+  {
+    key: "smokeTest",
+    title: "小额测试",
+    detail: "先从待迁移地址向新地址转一笔小额 BTC，确认到账、手续费与钱包流程无误后再加大金额。",
+  },
+  {
+    key: "batchMigrate",
+    title: "分批迁移",
+    detail: "大额资产拆成多笔转账，每笔确认链上到账后再继续，降低单次操作失误带来的损失面。",
+  },
+  {
+    key: "retireOld",
+    title: "停用旧地址",
+    detail: "迁移完成后停止向旧地址收款，更新所有对外收款入口（网页、二维码、记账习惯）。",
+  },
+  {
+    key: "backupVerify",
+    title: "备份验证",
+    detail: "确认助记词或备份介质可用且妥善保管；勿截图、勿明文保存在网盘或聊天工具中。",
+  },
+];
+
+const walletHabits = [
+  "收款尽量使用新地址，减少长期复用带来的链上关联与暴露面放大。",
+  "长期大额优先考虑冷存储或独立硬件类方案（按自身风险承受能力选择具体形态）。",
+  "勿在聊天、邮件或截图中传播完整地址与助记词；留意剪贴板劫持与钓鱼页面。",
+  "定期抽查备份是否仍可恢复，并避免在联网环境下输入完整助记词。",
+];
+
+const checklistState = ref({
+  smokeTest: false,
+  batchMigrate: false,
+  retireOld: false,
+  backupVerify: false,
+});
+
+onMounted(() => {
+  try {
+    const raw = localStorage.getItem(CHECKLIST_STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    checklistState.value = { ...checklistState.value, ...parsed };
+  } catch {
+    /* ignore */
+  }
+});
+
+watch(
+  checklistState,
+  (v) => {
+    try {
+      localStorage.setItem(CHECKLIST_STORAGE_KEY, JSON.stringify(v));
+    } catch {
+      /* ignore */
+    }
+  },
+  { deep: true }
+);
+
+function printActionGuide() {
+  window.print();
+}
+
+function resetChecklist() {
+  checklistState.value = {
+    smokeTest: false,
+    batchMigrate: false,
+    retireOld: false,
+    backupVerify: false,
+  };
+  try {
+    localStorage.removeItem(CHECKLIST_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
 
 const address = ref("");
 const loading = ref(false);
@@ -84,6 +164,47 @@ const evidenceRows = computed(() => {
     { label: "首次公钥暴露证据", tx: evidence.firstPublicKeyExposedTx },
     { label: "最近活跃证据", tx: evidence.recentActiveTx },
   ];
+});
+
+const batchSummaryNarrative = computed(() => {
+  const s = batchResult.value?.summary;
+  if (!s) return "";
+
+  const req = s.totalRequested ?? 0;
+  const processed = s.totalProcessed ?? 0;
+  const ok = s.successCount ?? 0;
+  const fail = s.failedCount ?? 0;
+  const hi = s.highRiskCount ?? 0;
+  const mid = s.mediumRiskCount ?? 0;
+  const low = s.lowRiskCount ?? 0;
+  const avg = s.averageRiskScore ?? 0;
+
+  const segments = [];
+  segments.push(
+    `本次共提交 ${req} 个地址，实际参与分析 ${processed} 个；成功返回 ${ok} 个${fail ? `，失败 ${fail} 个（请核对地址格式或稍后重试）` : ""}。`
+  );
+
+  if (ok <= 0) return segments.join(" ");
+
+  segments.push(
+    `在成功样本中：高风险 ${hi} 个、中风险 ${mid} 个、低风险 ${low} 个；平均风险分为 ${avg} 分（0–100，分值越高通常表示越应优先关注迁移与地址轮换）。`
+  );
+
+  if (hi > 0) {
+    segments.push(
+      "建议优先处理高风险地址：采用下方「迁移检查清单」的顺序，先小额试转再分批迁移，并在完成后停用旧收款入口。"
+    );
+  } else if (mid > 0) {
+    segments.push(
+      "整体存在一定暴露信号，建议减少地址复用、持续观察链上行为，并按习惯清单逐步收紧收款方式。"
+    );
+  } else {
+    segments.push(
+      "当前样本整体信号相对温和，但仍建议保持良好收款习惯并定期复查；量子风险属于长期议题，重在持续管理而非一次性结论。"
+    );
+  }
+
+  return segments.join("");
 });
 
 const riskLevel = computed(() => {
@@ -312,9 +433,11 @@ function exportHighRiskCsv() {
 
 <template>
   <div class="page">
+    <div class="no-print">
     <h1>比特币地址量子风险检测</h1>
     <p class="intro">
       输入地址后可识别地址类型，并基于链上花费行为判断该地址公钥是否已经暴露。
+      <router-link class="intro-method-link" to="/methodology">模型说明与方法论（风险分口径）</router-link>
     </p>
 
     <div class="form-card">
@@ -422,6 +545,7 @@ function exportHighRiskCsv() {
             batchResult.summary.lowRiskCount
           }}，平均风险分 {{ batchResult.summary.averageRiskScore }}
         </p>
+        <p v-if="batchSummaryNarrative" class="batch-narrative">{{ batchSummaryNarrative }}</p>
         <div class="export-actions">
           <button class="export-btn" @click="exportBatchCsv">导出 CSV</button>
           <button class="export-btn danger" @click="exportHighRiskCsv">仅导出高风险 CSV</button>
@@ -579,6 +703,30 @@ function exportHighRiskCsv() {
           证据链接会跳转到 Blockstream/Mempool 对应交易页面，帮助你复核“首次暴露”“最近活跃”等判断，提升可追溯性与可信度。
         </p>
       </details>
+      <details>
+        <summary>5. 多签或脚本路径里，脚本暴露后谁的公钥算暴露面？</summary>
+        <p>
+          定性理解：赎回脚本随花费公开后，脚本中出现的各参与方公钥（及脚本规则下可关联到的密钥材料）都可能成为链上可见的暴露面，具体范围取决于脚本类型与本次花费路径。本页仅为科普提示，复杂脚本需结合钱包说明或专业审计。
+        </p>
+      </details>
+      <details>
+        <summary>6. 测试网和主网能混着分析吗？</summary>
+        <p>
+          当前接口默认按<strong>比特币主网</strong>查询。请勿将测试网地址与主网地址混在同一批里；自建后端时请以自己的节点与 BLOCKSTREAM_API 配置为准。
+        </p>
+      </details>
+      <details>
+        <summary>7. 风险分低就等于安全吗？</summary>
+        <p>
+          不等于。分数是在当前链上数据与模型假设下的<strong>相对</strong>评估，用于前瞻性风险教育；量子威胁与协议演进均有不确定性。低分不是对未来任何场景的担保。
+        </p>
+      </details>
+      <details>
+        <summary>8. 数据从哪来？为何不能百分百还原真实情况？</summary>
+        <p>
+          默认使用 Blockstream 等公开 API（自建后端时可换数据源）。链上只能看到已索引的交易，无法覆盖链下行为与未上链操作，因此存在延迟与盲区。
+        </p>
+      </details>
     </section>
 
     <details class="quantum-card" open>
@@ -608,5 +756,40 @@ function exportHighRiskCsv() {
         </li>
       </ul>
     </details>
+    </div>
+
+    <section id="action-guide" class="action-guide-card" aria-labelledby="action-guide-title">
+      <header class="action-guide-header">
+        <h2 id="action-guide-title">迁移检查与收款习惯</h2>
+        <div class="action-guide-actions no-print">
+          <button type="button" class="export-btn" @click="printActionGuide">打印本清单</button>
+          <button type="button" class="export-btn muted" @click="resetChecklist">清空勾选</button>
+        </div>
+      </header>
+      <p class="action-guide-lead">
+        下列清单可对照执行；勾选状态仅保存在本浏览器，便于分步推进与打印存档。
+      </p>
+
+      <h3 class="action-guide-sub">迁移检查清单</h3>
+      <ul class="checklist">
+        <li v-for="step in migrationSteps" :key="step.key" class="checklist-item">
+          <label class="checklist-label">
+            <input v-model="checklistState[step.key]" type="checkbox" class="checklist-input" />
+            <span class="checklist-text">
+              <strong>{{ step.title }}</strong>
+              <span class="checklist-detail">{{ step.detail }}</span>
+            </span>
+          </label>
+        </li>
+      </ul>
+
+      <h3 class="action-guide-sub">钱包与日常使用习惯（通用建议）</h3>
+      <ul class="habit-list">
+        <li v-for="(line, idx) in walletHabits" :key="idx">{{ line }}</li>
+      </ul>
+      <p class="action-guide-note">
+        以上为风险管理教育用途，不构成投资建议或任何机构背书；具体方案请结合你的实际情况与合规要求。
+      </p>
+    </section>
   </div>
 </template>
